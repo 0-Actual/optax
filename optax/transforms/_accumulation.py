@@ -379,12 +379,19 @@ class MultiSteps:
               new_inner_state,
           ),
           acc_grads=jax.tree.map(
-              lambda ga: jnp.astype((1 - emit) * ga, self._accumulator_dtype),
+              # Multiplication by zero would retain NaNs from a rejected batch.
+              lambda ga: jnp.astype(
+                  jnp.where(emit, jnp.zeros_like(ga), ga),
+                  self._accumulator_dtype,
+              ),
               acc_grads,
           ),
           skip_state=skip_state,
       )
-      final_updates = jax.tree.map(lambda ga: emit * ga, final_updates)
+      # Non-emitting steps must return zeros, even for non-finite updates.
+      final_updates = jax.tree.map(
+          lambda ga: jnp.where(emit, ga, jnp.zeros_like(ga)), final_updates
+      )
       return final_updates, new_state
 
     def _skip_update(updates, state, params):
